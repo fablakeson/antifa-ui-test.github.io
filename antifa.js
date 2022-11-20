@@ -24,7 +24,6 @@ const registered = {
 
 // register an element on page
 function register(key, value) {
-    console.log(key);
     if (!registered[key]) {
         registered[key] = new Set();
     }
@@ -80,9 +79,10 @@ const antifa = {
             }
         },
         "upload" : {
-            "pattern" : "Upload path \"{param:file}\" to the {@element} {type}",
+            "pattern" : "Upload path \"{file}\" to the {@element} {type}",
             "condition" : () => hasRegistered('@element'),
             "values" : {
+                "@element" : () => getRegistered('@element'),
                 "type" : () => ["file"]
             }
         },
@@ -95,7 +95,7 @@ const antifa = {
             }
         },
         "set" : {
-            "pattern" : "Set {@element} {type} to \"{param:value}\"",
+            "pattern" : "Set {@element} {type} to \"{value}\"",
             "condition" : () => hasRegistered('@element'),
             "values" : {
                 "@element" : () => getRegistered('@element'),
@@ -103,7 +103,7 @@ const antifa = {
             }
         },
         "write" : {
-            "pattern" : "Write \"{param:text}\" to {@element} {type}",
+            "pattern" : "Write \"{text}\" to {@element} {type}",
             "condition" : () => hasRegistered('@element'),
             "values" : {
                 "@element" : () => getRegistered('@element'),
@@ -111,15 +111,15 @@ const antifa = {
             }
         },
         "read" : {
-            "pattern" : "Read {param:text} on the {@element} {type}",
+            "pattern" : "Read {text} on the {@element} {type}",
             "condition" : () => hasRegistered('@element'),
             "values" : {
                 "@element" : () => getRegistered('@element'),
                 "type" : () => ["textbox", "input", "field", "display", "label", "tag", "header", "message"]
             }
         },
-        "declare" : {
-            "pattern" : "Declare {@element} as \"{param:name}\" located by \"{param:locator}\"",
+        "define" : {
+            "pattern" : "Define {@element} as \"{name}\" located by \"{locator}\"",
             "condition" : () => hasRegistered('page'),
             "events" : {
                 "onCreate" : (context) => register('@element', context['@element']),
@@ -139,14 +139,14 @@ const antifa = {
             }
         },
         "assert" : {
-            "pattern" : "Assert \"{param:value}\" equals to {variable}",
+            "pattern" : "Assert \"{value}\" equals to {variable}",
             "condition" : () => hasRegistered('variable'),
             "values" : {
                 "variable" : () => getRegistered('variable')
             }
         },
         "open" : {
-            "pattern" : "Open the {element} page on \"{param:url}\"",
+            "pattern" : "Open the {element} page on \"{url}\"",
             "condition" : () => false, // disable open action
             "events" : {
                 "onCreate" : (context) => register('page', context['element']),
@@ -162,9 +162,16 @@ const antifa = {
         },
         "scroll" : {
             "condition" : () => hasRegistered('page'),
-            "pattern" : "Scroll {param:direction} the page",
+            "pattern" : "Scroll {direction} the page",
             "values" : {
-                "param:direction" : () => ["up", "down"]
+                "direction" : () => ["up", "down"]
+            }
+        },
+        "wait" : {
+            "pattern" : "Wait {amount} {timeUnit}",
+            "condition": () => true,
+            "values" : {
+                "timeUnit" : () => ["seconds", "minutes", "milliseconds"]
             }
         }
     }
@@ -203,6 +210,7 @@ function initDatalist() {
     const initialPatterns = Object.keys(antifa.actions)
         .filter(action => antifa.actions[action].condition())
         .map(action => antifa.actions[action].pattern.split(' ')[0])
+        .sort((a,b) => a.localeCompare(b))
         .map(value => `<option value="${value} ">`)
         .join('\n');
     updateDatalist(initialPatterns);
@@ -345,17 +353,55 @@ function htmlToElement(html) {
 }
 
 // return a context object for intruction.
-function getContext(instructionValue) {
-    const isntructionTokens = instructionValue.match(/(?:[^\s"]+|"[^"]*")+/g);
-    const verb = isntructionTokens[0].toLowerCase();
-    const patternTokens = antifa.actions[verb].pattern.match(/(?:[^\s"]+|"[^"]*")+/g) ;
-    const context = {};
-    for (let i = 0; i < patternTokens.length; ++i) {
-        if (isPlaceholder(patternTokens[i])) {
-            context[patternTokens[i].match(/\{(.+?)\}/)[1]] = isntructionTokens[i];
+function maybeGetContext(instructionValue) {
+    try {
+        const isntructionTokens = instructionValue.match(/(?:[^\s"]+|"[^"]*")+/g);
+        const verb = isntructionTokens[0].toLowerCase();
+        const patternTokens = antifa.actions[verb].pattern.match(/(?:[^\s"]+|"[^"]*")+/g) ;
+        const context = {};
+        for (let i = 0; i < patternTokens.length; ++i) {
+            if (isPlaceholder(patternTokens[i])) {
+                context[patternTokens[i].match(/\{(.+?)\}/)[1]] = isntructionTokens[i];
+            }
         }
+        return context;
+    } catch (error) {
+        message.MaterialSnackbar.showSnackbar({message: 'Error: Instruction format is not correct! 😅. Please, check the example.'});
+        return null;
     }
-    return context;
+}
+
+// the item id counter
+var idCounter = 1;
+
+// append instruction to table
+function appendToTable(newRow) {
+    // append new row to table body
+    table.children[1].appendChild(newRow);
+    // reset the instruction input
+    form.reset();
+    initDatalist();
+    updateLabel();
+    // update MDL dom
+    componentHandler.upgradeDom();
+}
+
+var row;
+
+function dragStart(event){  
+  row = event.target; 
+}
+
+function dragOver(event){
+  var e = event;
+  e.preventDefault(); 
+  
+  let children = Array.from(e.target.parentNode.parentNode.children);
+  
+  if(children.indexOf(e.target.parentNode)>children.indexOf(row))
+    e.target.parentNode.after(row);
+  else
+    e.target.parentNode.before(row);
 }
 
 // add instruction to table
@@ -366,60 +412,75 @@ function addInstruction() {
         return;
     }
 
-    // trigger the events for instruction verb
-    const context = getContext(instruction.value);
-    antifa.actions[lastVerb]?.events?.onCreate(context);
-
-    // check if instruction has period
-    const instructionValue = instruction.value.endsWith('.')
-        ? instruction.value
-        : instruction.value + '.';
+    let instructionValue;
+    // check if instruction is a comment
+    if (instruction.value.startsWith('#')) {
+        instructionValue = instruction.value.trim();
+    } else {
+        // trigger the events for instruction verb
+        const context = maybeGetContext(instruction.value);
+        if (!context) {
+            return;
+        }
+        antifa.actions[lastVerb]?.events?.onCreate(context);
+    
+        // check if instruction has period
+        instructionValue = instruction.value.endsWith('.')
+            ? instruction.value.trim()
+            : instruction.value.trim() + '.';
+    }
 
     // new row component
-    const newRow = htmlToElement(`<tr>
+    const newRow = htmlToElement(`<tr draggable="true">
         <td class="mdl-data-table__cell--non-numeric instruction" contenteditable="false">${instructionValue}</td>
-    </td>`);
+    </tr>`);
+    newRow.ondragstart = dragStart;
+    newRow.ondragover = dragOver;
 
     // delete action button
-    const deleteButton = htmlToElement(`<button id="remove" class="mdl-button mdl-js-button mdl-button--icon">
+    const deleteButton = htmlToElement(`<button id="remove${idCounter}" class="mdl-button mdl-js-button mdl-button--icon">
     <i class="material-icons">delete</i>
     </button>`);
     deleteButton.onclick = () => removeInstruction(newRow);
+    // delete action tooltip
+    const deleteTooltip = htmlToElement(`<div class="mdl-tooltip" data-mdl-for="remove${idCounter}">Delete</div>`);
     // edit action button
-    const editButton = htmlToElement(`<button id="edit" class="mdl-button mdl-js-button mdl-button--icon">
+    const editButton = htmlToElement(`<button id="edit${idCounter}" class="mdl-button mdl-js-button mdl-button--icon">
     <i class="material-icons">edit</i>
-    </button>
-    <div class="edit" data-mdl-for="remove">Edit</div>`);
+    </button>`);
     editButton.onclick = () => editInstruction(newRow);
+    // edit tooltip
+    const editTooltip = htmlToElement(`<div class="mdl-tooltip" data-mdl-for="edit${idCounter}">Edit</div>`);
     
     // actions component
     const actions = document.createElement("td");
     // append buttons to actions
     actions.appendChild(editButton);
     actions.appendChild(deleteButton);
-    
+    // append tooltip to actions
+    actions.appendChild(editTooltip);
+    actions.appendChild(deleteTooltip);
+
     // append actions to new row
     newRow.appendChild(actions);
     // append new row to table body
-    table.children[1].appendChild(newRow);
-    // reset the instruction input
-    form.reset();
-    initDatalist();
-    updateLabel();
+    appendToTable(newRow);
     // message
     message.MaterialSnackbar.showSnackbar({message: 'Instruction added! ➕'});
+    ++idCounter;
 }
 
 // remove given instruction from table
 function removeInstruction(element) {
-    // get the element action verb
-    const verb = element.innerText.match(/(?:[^\s"]+|"[^"]*")+/g)[0].toLowerCase();
-    // trigger the events for deleting this verb
-    const context = getContext(element.innerText);
-    antifa.actions[verb]?.events?.onDelete(context);
+    if (!element.innerText.startsWith('#')) {
+        // get the element action verb
+        const verb = element.innerText.match(/(?:[^\s"]+|"[^"]*")+/g)[0].toLowerCase();
+        // trigger the events for deleting this verb
+        const context = maybeGetContext(element.innerText);
+        antifa.actions[verb]?.events?.onDelete(context);
+    }
     // remove element from dom
     element.remove();
-    console.log(registered);
     // reset the instruction input
     form.reset();
     initDatalist();
@@ -432,6 +493,7 @@ function editInstruction(element) {
     const instructionTd = element.querySelector(':nth-child(1)');
     const actionsTd = element.querySelector(':nth-child(2)');
     const editButton = actionsTd.querySelector(':nth-child(1)');
+    const editTooltip = actionsTd.querySelector(':nth-child(3)');
     // check the element state
     if (instructionTd.contentEditable === 'false') {
         // activate edit mode
@@ -440,10 +502,12 @@ function editInstruction(element) {
             instructionTd.focus();
         }, 0);
         editButton.innerHTML = '<i class="material-icons">done</i>';
+        editTooltip.innerText = 'Save';
     } else {
         // deactivate edit mode
         instructionTd.contentEditable = 'false';
         editButton.innerHTML = '<i class="material-icons">edit</i>';
+        editTooltip.innerText = 'Edit';
     }
 }
 
@@ -456,12 +520,13 @@ function generateFile() {
     }
     // generate message
     const openMessage = 
-`## Test generated with Antifa Framework Test Creation Tool
+`### Test generated with Antifa Framework Test Creation Tool
 
-## ${testName.innerText}
+# ${testName.innerText}
 Open`;
     const output = [...document.getElementsByClassName('instruction')]
             .map(el => el.innerText).join('\n')
+            .replaceAll(/^#/gm, '\n#')
             .replace(/^Open/, openMessage);
     // enable download
     download.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(output));
