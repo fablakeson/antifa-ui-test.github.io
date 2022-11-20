@@ -111,7 +111,7 @@ const antifa = {
             }
         },
         "read" : {
-            "pattern" : "Read {text} on the {@element} {type}",
+            "pattern" : "Read \"{text}\" on the {@element} {type}",
             "condition" : () => hasRegistered('@element'),
             "values" : {
                 "@element" : () => getRegistered('@element'),
@@ -413,9 +413,11 @@ function addInstruction() {
     }
 
     let instructionValue;
+    let isComment;
     // check if instruction is a comment
     if (instruction.value.startsWith('#')) {
         instructionValue = instruction.value.trim();
+        isComment = true;
     } else {
         // trigger the events for instruction verb
         const context = maybeGetContext(instruction.value);
@@ -428,10 +430,11 @@ function addInstruction() {
         instructionValue = instruction.value.endsWith('.')
             ? instruction.value.trim()
             : instruction.value.trim() + '.';
+        isComment = false;
     }
 
     // new row component
-    const newRow = htmlToElement(`<tr draggable="true">
+    const newRow = htmlToElement(`<tr draggable="true" class="${isComment ? 'comment': ''}">
         <td class="mdl-data-table__cell--non-numeric instruction" contenteditable="false">${instructionValue}</td>
     </tr>`);
     newRow.ondragstart = dragStart;
