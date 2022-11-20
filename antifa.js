@@ -17,6 +17,13 @@ const testName = document.getElementById('testName');
 // the message
 const message = document.getElementById('message');
 
+// page is not dirty initialy
+var dirty = false;
+// controls dirty state
+function isDirty() { return dirty; }
+function clearDirty() { dirty = false; }
+function setDirty() { dirty = true; }
+
 // register of elements in page
 const registered = {
     'page' : new Set(['browser'])
@@ -384,6 +391,8 @@ function appendToTable(newRow) {
     updateLabel();
     // update MDL dom
     componentHandler.upgradeDom();
+    // set dirty to added instruction
+    setDirty();
 }
 
 var row;
@@ -402,6 +411,9 @@ function dragOver(event){
     e.target.parentNode.after(row);
   else
     e.target.parentNode.before(row);
+
+  // set dirty for moved row
+  setDirty();
 }
 
 // add instruction to table
@@ -488,6 +500,8 @@ function removeInstruction(element) {
     form.reset();
     initDatalist();
     updateLabel();
+    // set dirty for removed instruction
+    setDirty();
     message.MaterialSnackbar.showSnackbar({message: 'Instruction removed! 🗑'});
 }
 
@@ -506,6 +520,8 @@ function editInstruction(element) {
         }, 0);
         editButton.innerHTML = '<i class="material-icons">done</i>';
         editTooltip.innerText = 'Save';
+        // set dirty for probably edit content
+        setDirty();
     } else {
         // deactivate edit mode
         instructionTd.contentEditable = 'false';
@@ -535,8 +551,24 @@ Open`;
     download.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(output));
     download.setAttribute('download', testName.innerText.trim()
             .toLowerCase().replaceAll(' ', '_') + '.txt');
+    // clear dirty state
+    clearDirty();
     message.MaterialSnackbar.showSnackbar({message: 'File downloaded! 📥'});
 }
+
+window.onload = function() {
+    window.addEventListener("beforeunload", function (e) {
+        if (!isDirty()) {
+            return undefined;
+        }
+        
+        var confirmationMessage = 'It looks like you have been editing something. '
+                                + 'If you leave before saving, your changes will be lost.';
+
+        (e || window.event).returnValue = confirmationMessage; //Gecko + IE
+        return confirmationMessage; //Gecko + Webkit, Safari, Chrome etc.
+    });
+};
 
 // bind instruction input events
 instruction.oninput = onInput;
