@@ -373,7 +373,7 @@ function maybeGetContext(instructionValue) {
         }
         return context;
     } catch (error) {
-        message.MaterialSnackbar.showSnackbar({message: 'Error: Instruction format is not correct! 😅. Please, check the example.'});
+        message.MaterialSnackbar.showSnackbar({message: 'Error: Incorrect instruction format! Please, follow the example 😅.'});
         return null;
     }
 }
